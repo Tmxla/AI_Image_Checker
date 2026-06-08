@@ -1,3 +1,80 @@
-# AI_Image_Checker
+# AI_Image_Checker / TrueLens
 
-오픈소스설계 과제용 저장소입니다.
+AI Image Checker(TrueLens)는 이미지 파일 또는 이미지 URL을 입력받아 AI 생성 가능성을 계산하고, 결과/히트맵/오판별 피드백/관리자 검토 흐름을 제공하는 과제용 구현 프로젝트입니다.
+
+## 실행 방법
+
+이 프로젝트는 외부 패키지 설치 없이 Python 표준 라이브러리만 사용합니다.
+
+```bash
+python3 app.py
+```
+
+실행 후 브라우저에서 아래 주소로 접속합니다.
+
+```text
+http://127.0.0.1:8000
+```
+
+서버 종료는 터미널에서 `Ctrl+C`를 누르면 됩니다.
+
+## 구현 기능
+
+- 이미지 파일 업로드 및 드래그 앤 드롭 분석
+- 이미지 URL 입력 분석
+- 입력값 검증
+  - 파일 미입력/동시 입력 방지
+  - JPG, PNG 형식 확인
+  - 10MB 이하 용량 제한
+  - URL 형식 확인
+- AnalysisRequest 생성 및 상태 저장
+- DetectionEngine 기반 AI 생성 확률 계산
+- 분석 결과 화면 제공
+- 원본 이미지와 히트맵 근거 비교 화면 제공
+- 오판별 피드백 제출
+- 관리자 대시보드
+  - 관리자 비밀번호 인증
+  - 일일 요청 수
+  - 평균 처리 시간
+  - 성공/실패/처리 중 건수
+  - 피드백 목록 조회
+  - 피드백 상세 검토 및 결과 저장
+
+## 구현 구조
+
+```text
+app.py              # 표준 라이브러리 기반 HTTP 서버 및 라우팅
+models.py           # 설계 문서의 Entity 클래스
+controllers.py      # AnalysisController, FeedbackController, AdminController
+detection_engine.py # DetectionEngine 서비스
+storage.py          # SQLite 기반 데이터 저장소
+views.py            # HTML 화면 렌더링
+static/style.css    # 화면 스타일
+static/script.js    # 드래그 앤 드롭, 파일명 표시, 입력 초기화
+static/uploads/     # 업로드 이미지 저장 위치
+data/truelens.db    # 실행 중 생성되는 SQLite DB
+```
+
+## 관리자 로그인
+
+관리자 화면은 비밀번호 인증 후 접근할 수 있습니다. 기본 개발용 비밀번호는 `admin1234`입니다.
+
+비밀번호를 바꾸고 실행하려면 다음처럼 환경변수를 지정합니다.
+
+```bash
+TRUELENS_ADMIN_PASSWORD=your-password python3 app.py
+```
+
+## 설계 문서와의 연결
+
+Design 문서의 주요 클래스와 기능 흐름을 코드에 반영했습니다.
+
+- `AnalysisController`: 이미지 입력 수신, 분석 요청 생성, 분석 실행, 결과 조회
+- `FeedbackController`: 오판별 피드백 검증 및 저장
+- `AdminController`: 시스템 상태 조회, 피드백 목록/상세 조회, 검토 결과 저장
+- `DetectionEngine`: AI 생성 확률 계산 및 히트맵 근거 생성
+- `AnalysisRequest`, `AnalysisResult`, `HeatmapEvidence`, `MisclassificationFeedback`, `FeedbackReview`, `SystemStatus`: 데이터 관리 객체
+
+## 참고 사항
+
+현재 `DetectionEngine`은 실제 딥러닝 모델 대신 deterministic mock 분석 방식을 사용합니다. 이미지 바이트 또는 URL 문자열을 기반으로 항상 같은 입력에 대해 같은 AI 생성 확률과 히트맵 위치를 생성합니다. 실제 GPU 기반 AI 모델은 이후 `detection_engine.py`의 `DetectionEngine` 내부 구현만 교체하면 연결할 수 있도록 분리했습니다.
