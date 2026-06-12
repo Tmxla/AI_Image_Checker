@@ -4,12 +4,12 @@ AI Image Checker(TrueLens)는 이미지 파일 또는 이미지 URL을 입력받
 
 ## 실행 방법
 
-실제 AI 이미지 판별은 Sightengine API를 사용합니다. Python 가상환경에서 의존성을 설치한 뒤 실행합니다.
+실제 AI 이미지 판별은 기본적으로 Hugging Face에 공개된 ONNX 사전학습 모델을 로컬에서 실행합니다. Sightengine API 키가 설정되어 있으면 보조 검증 신호로 함께 사용합니다.
 
 ```bash
 python3.11 -m venv .venv
 .venv/bin/python -m pip install -r requirements.txt
-SIGHTENGINE_API_USER=your-api-user SIGHTENGINE_API_SECRET=your-api-secret .venv/bin/python app.py
+.venv/bin/python app.py
 ```
 
 실행 후 브라우저에서 아래 주소로 접속합니다.
@@ -30,7 +30,8 @@ http://127.0.0.1:8000
   - 10MB 이하 용량 제한
   - URL 형식 확인
 - AnalysisRequest 생성 및 상태 저장
-- Sightengine AI Image Detection API 기반 AI 생성 확률 계산
+- ONNX 사전학습 모델 기반 AI 생성 확률 계산
+- Sightengine AI Image Detection API 보조 검증 연동
 - 분석 결과 화면 제공
 - 원본 이미지와 보조 시각 근거 비교 화면 제공
   - AI 확률이 낮으면 의심 영역을 표시하지 않음
@@ -86,6 +87,7 @@ Environment Variables에는 아래 값을 등록합니다.
 ```text
 SIGHTENGINE_API_USER=Sightengine에서 발급받은 API user
 SIGHTENGINE_API_SECRET=Sightengine에서 발급받은 API secret
+TRUELENS_DETECTOR_BACKEND=hybrid
 TRUELENS_ADMIN_PASSWORD=관리자 로그인 비밀번호
 TRUELENS_ADMIN_SECRET=긴 랜덤 문자열
 ```
@@ -104,9 +106,17 @@ Design 문서의 주요 클래스와 기능 흐름을 코드에 반영했습니�
 
 ## 참고 사항
 
-현재 `DetectionEngine`은 기본적으로 Sightengine의 `genai` 모델을 사용합니다. API 응답의 `type.ai_generated` 값을 앱의 AI 생성 확률로 저장합니다.
+현재 `DetectionEngine`은 기본적으로 `onnx-community/ai-image-detection-ONNX` 모델의 `onnx/model_q4.onnx` 파일을 실행합니다. 이 모델은 `capcheck/ai-image-detection`의 ONNX 변환본이며, 입력 이미지를 224x224 RGB 텐서로 전처리한 뒤 REAL/FAKE 확률을 계산합니다.
 
-시각 근거 화면의 붉은 영역은 Sightengine이 제공한 위치별 attention map이 아닙니다. Sightengine API는 전체 이미지 단위의 AI 생성 확률을 제공하므로, TrueLens는 업로드된 이미지를 로컬에서 패치 단위로 나누어 경계 변화, 고주파 질감, 색상 분산, 압축 블록 경계가 상대적으로 큰 영역을 보조 시각화로 표시합니다. 따라서 이 화면은 최종 판정을 단정하는 근거가 아니라 전체 판별 점수를 이해하기 위한 참고 자료입니다.
+`TRUELENS_DETECTOR_BACKEND` 값은 다음처럼 사용할 수 있습니다.
+
+```text
+hybrid      로컬 ONNX 모델과 Sightengine API를 함께 사용합니다. 기본값입니다.
+local       로컬 ONNX 모델만 사용합니다.
+sightengine Sightengine API만 사용합니다.
+```
+
+시각 근거 화면의 붉은 영역은 모델 내부 attention map이 아닙니다. TrueLens는 업로드된 이미지를 로컬에서 패치 단위로 나누어 경계 변화, 고주파 질감, 색상 분산, 압축 블록 경계가 상대적으로 큰 영역을 보조 시각화로 표시합니다. 따라서 이 화면은 최종 판정을 단정하는 근거가 아니라 전체 판별 점수를 이해하기 위한 참고 자료입니다.
 
 의도적으로 mock 모드를 쓰려면 다음처럼 실행합니다.
 

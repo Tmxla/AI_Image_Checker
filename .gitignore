@@ -3,6 +3,7 @@ __pycache__/
 *.pyc
 .venv/
 data/*.db
+data/models/*
 static/uploads/*
 !static/uploads/.gitkeep
 *.zip

@@ -26,12 +26,21 @@ class DetectionEngine:
         model_version: str | None = None,
     ):
         self.engine_id = engine_id
-        self.model_id = model_id or os.environ.get("SIGHTENGINE_MODELS", "genai")
-        self.model_version = model_version or f"Sightengine:{self.model_id}"
+        self.backend = os.environ.get("TRUELENS_DETECTOR_BACKEND", "hybrid").strip().lower()
+        self.local_model_repo = model_id or os.environ.get("TRUELENS_LOCAL_MODEL_REPO", "onnx-community/ai-image-detection-ONNX")
+        self.local_model_file = os.environ.get("TRUELENS_LOCAL_MODEL_FILE", "onnx/model_q4.onnx")
+        self.local_model_path = Path(
+            os.environ.get("TRUELENS_LOCAL_MODEL_PATH", f"data/models/{Path(self.local_model_file).name}")
+        )
+        self.model_version = model_version or f"ONNX:{self.local_model_repo}/{self.local_model_file}"
+        self.sightengine_model_id = os.environ.get("SIGHTENGINE_MODELS", "genai")
         self.api_url = os.environ.get("SIGHTENGINE_API_URL", "https://api.sightengine.com/1.0/check.json")
         self.api_user = os.environ.get("SIGHTENGINE_API_USER", "")
         self.api_secret = os.environ.get("SIGHTENGINE_API_SECRET", "")
+        self._onnx_session = None
+        self._onnx_input_name = ""
         self._api_error = ""
+        self._local_model_error = ""
 
     def run_detection(self, request: AnalysisRequest, source_bytes: Optional[bytes], source_hint: str) -> DetectionOutput:
         request.update_status("analyzing")
@@ -56,19 +65,62 @@ class DetectionEngine:
         if os.environ.get("TRUELENS_FORCE_MOCK", "0") == "1":
             return self._fallback_score(source_bytes, source_hint)
 
-        if source_bytes and self._has_sightengine_credentials():
-            return self._calculate_sightengine_score(source_bytes, source_hint), self.model_version
+        local_result = None
+        sightengine_result = None
+        if source_bytes:
+            if self.backend in {"local", "hybrid", "auto"}:
+                try:
+                    local_result = (self._calculate_local_onnx_score(source_bytes), self.model_version)
+                except Exception as exc:
+                    self._local_model_error = str(exc)
+
+            if self.backend in {"sightengine", "hybrid", "auto"} and self._has_sightengine_credentials():
+                try:
+                    sightengine_result = (
+                        self._calculate_sightengine_score(source_bytes, source_hint),
+                        f"Sightengine:{self.sightengine_model_id}",
+                    )
+                except Exception as exc:
+                    self._api_error = str(exc)
+
+        if self.backend == "local" and local_result:
+            return local_result
+        if self.backend == "sightengine" and sightengine_result:
+            return sightengine_result
+        if self.backend == "sightengine" and local_result:
+            score, version = local_result
+            return score, f"{version} (Sightengine unavailable)"
+
+        if local_result and sightengine_result:
+            local_score, local_version = local_result
+            sightengine_score, sightengine_version = sightengine_result
+            sightengine_weight = self._sightengine_weight(local_score, sightengine_score)
+            score = round((local_score * (1.0 - sightengine_weight)) + (sightengine_score * sightengine_weight), 4)
+            return score, f"Hybrid:{local_version}+{sightengine_version}"
+        if local_result:
+            return local_result
+        if sightengine_result:
+            return sightengine_result
 
         return self._fallback_score(source_bytes, source_hint)
 
     def _fallback_score(self, source_bytes: Optional[bytes], source_hint: str) -> tuple[float, str]:
         score = self._calculate_mock_score(source_bytes, source_hint)
         version = "Mock-Fallback-HashEntropy-1.1"
+        if self._local_model_error:
+            version = f"{version} (local ONNX model unavailable)"
         if not self._has_sightengine_credentials():
             version = f"{version} (Sightengine credentials missing)"
         if self._api_error:
             version = f"{version} (Sightengine API unavailable)"
         return score, version
+
+    def _sightengine_weight(self, local_score: float, sightengine_score: float) -> float:
+        if sightengine_score <= 0.15 or sightengine_score >= 0.85:
+            return 0.80
+        if abs(local_score - sightengine_score) >= 0.40:
+            return 0.68
+        return 0.55
 
     def _calculate_mock_score(self, source_bytes: Optional[bytes], source_hint: str) -> float:
         digest = hashlib.sha256((source_bytes or source_hint.encode("utf-8")).strip()).digest()
@@ -81,6 +133,68 @@ class DetectionEngine:
     def _has_sightengine_credentials(self) -> bool:
         return bool(self.api_user and self.api_secret)
 
+    def _calculate_local_onnx_score(self, source_bytes: bytes) -> float:
+        session, input_name = self._ensure_onnx_session()
+        tensor = self._preprocess_for_vit(source_bytes)
+        logits = session.run(None, {input_name: tensor})[0][0]
+        probabilities = self._softmax(logits)
+        fake_score = float(probabilities[1])
+        return round(max(0.0, min(fake_score, 1.0)), 4)
+
+    def _ensure_onnx_session(self):
+        if self._onnx_session is not None:
+            return self._onnx_session, self._onnx_input_name
+
+        import onnxruntime as ort
+
+        model_path = self._ensure_local_model_file()
+        options = ort.SessionOptions()
+        options.intra_op_num_threads = int(os.environ.get("TRUELENS_ONNX_THREADS", "1"))
+        options.inter_op_num_threads = 1
+        self._onnx_session = ort.InferenceSession(
+            str(model_path),
+            sess_options=options,
+            providers=["CPUExecutionProvider"],
+        )
+        self._onnx_input_name = self._onnx_session.get_inputs()[0].name
+        return self._onnx_session, self._onnx_input_name
+
+    def _ensure_local_model_file(self) -> Path:
+        if self.local_model_path.exists() and self.local_model_path.stat().st_size > 1_000_000:
+            return self.local_model_path
+
+        self.local_model_path.parent.mkdir(parents=True, exist_ok=True)
+        url = f"https://huggingface.co/{self.local_model_repo}/resolve/main/{self.local_model_file}"
+        temp_path = self.local_model_path.with_suffix(f"{self.local_model_path.suffix}.tmp")
+        with requests.get(url, stream=True, timeout=120) as response:
+            response.raise_for_status()
+            with temp_path.open("wb") as target:
+                for chunk in response.iter_content(chunk_size=1024 * 1024):
+                    if chunk:
+                        target.write(chunk)
+        temp_path.replace(self.local_model_path)
+        return self.local_model_path
+
+    def _preprocess_for_vit(self, source_bytes: bytes):
+        import numpy as np
+        from PIL import Image, ImageOps
+
+        image = Image.open(BytesIO(source_bytes))
+        image = ImageOps.exif_transpose(image).convert("RGB")
+        image = image.resize((224, 224), Image.Resampling.BILINEAR)
+        array = np.asarray(image).astype(np.float32) / 255.0
+        array = (array - 0.5) / 0.5
+        array = np.transpose(array, (2, 0, 1))
+        return array[None, :, :, :]
+
+    def _softmax(self, logits):
+        import numpy as np
+
+        values = np.asarray(logits, dtype=np.float32)
+        values = values - np.max(values)
+        exp_values = np.exp(values)
+        return exp_values / np.sum(exp_values)
+
     def _calculate_sightengine_score(self, source_bytes: bytes, source_hint: str) -> float:
         files = {
             "media": (
@@ -90,7 +204,7 @@ class DetectionEngine:
             )
         }
         data = {
-            "models": self.model_id,
+            "models": self.sightengine_model_id,
             "api_user": self.api_user,
             "api_secret": self.api_secret,
         }
@@ -240,7 +354,7 @@ class DetectionEngine:
         size = int(20 + min(score, 1.0) * 30)
         description = (
             f"붉은 영역은 이미지 패치 분석에서 {reasons} 지표가 상대적으로 높게 측정된 위치입니다. "
-            "Sightengine API는 위치별 attention map을 제공하지 않으므로, 이 히트맵은 전체 AI 생성 확률을 보조 설명하기 위한 시각적 참고 자료입니다."
+            "현재 판별 모델은 위치별 attention map을 직접 제공하지 않으므로, 이 히트맵은 전체 AI 생성 확률을 보조 설명하기 위한 시각적 참고 자료입니다."
         )
         return x_percent, y_percent, size, description
 
