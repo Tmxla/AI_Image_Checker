@@ -145,7 +145,6 @@ class DetectionEngine:
         return "jpg"
 
     def generate_heatmap_data(self, source_bytes: Optional[bytes], source_hint: str, score: float) -> HeatmapEvidence:
-        digest = hashlib.sha256((source_bytes or source_hint.encode("utf-8")).strip()).digest()
         if score < 0.20:
             return HeatmapEvidence(
                 heatmap_id=new_id("heatmap"),
@@ -154,13 +153,26 @@ class DetectionEngine:
                 heatmap_size=0,
                 description="AI 생성 가능성이 낮게 측정되어 붉은 의심 영역을 표시하지 않습니다. 현재 히트맵은 판별 점수와 일관되도록 비활성화되었습니다.",
             )
+
+        localized = self._localize_visual_evidence(source_bytes, score)
+        if localized:
+            x, y, size, description = localized
+            return HeatmapEvidence(
+                heatmap_id=new_id("heatmap"),
+                heatmap_x=x,
+                heatmap_y=y,
+                heatmap_size=size,
+                description=description,
+            )
+
+        digest = hashlib.sha256((source_bytes or source_hint.encode("utf-8")).strip()).digest()
         x = 24 + digest[0] % 52
         y = 22 + digest[1] % 54
         size = int(18 + min(score, 1.0) * 34)
         if score < 0.45:
-            description = "AI 생성 가능성이 낮은 편이지만 일부 약한 시각적 신호가 있어 작은 참고 영역만 표시합니다."
+            description = "AI 생성 가능성이 낮은 편이지만 일부 약한 시각적 신호가 있어 작은 참고 영역만 표시합니다. 원본 이미지 패치 분석을 수행하지 못해 위치 근거는 제한적입니다."
         else:
-            description = "붉게 표시된 영역은 전체 AI 생성 가능성 점수와 함께 참고할 수 있는 상대적 의심 영역입니다."
+            description = "붉게 표시된 영역은 전체 AI 생성 가능성 점수와 함께 참고할 수 있는 상대적 의심 영역입니다. 원본 이미지 패치 분석을 수행하지 못해 위치 근거는 제한적입니다."
         return HeatmapEvidence(
             heatmap_id=new_id("heatmap"),
             heatmap_x=x,
@@ -168,6 +180,128 @@ class DetectionEngine:
             heatmap_size=size,
             description=description,
         )
+
+    def _localize_visual_evidence(self, source_bytes: Optional[bytes], score: float) -> tuple[int, int, int, str] | None:
+        if not source_bytes:
+            return None
+        try:
+            from PIL import Image, ImageOps
+
+            image = Image.open(BytesIO(source_bytes))
+            image = ImageOps.exif_transpose(image).convert("RGB")
+            image.thumbnail((260, 260))
+        except Exception:
+            return None
+
+        width, height = image.size
+        if width < 32 or height < 32:
+            return None
+
+        gray = image.convert("L")
+        gray_pixels = gray.load()
+        color_pixels = image.load()
+        best_patch = None
+        cols, rows = 5, 4
+        for row in range(rows):
+            for col in range(cols):
+                x0 = int(col * width / cols)
+                x1 = int((col + 1) * width / cols)
+                y0 = int(row * height / rows)
+                y1 = int((row + 1) * height / rows)
+                metrics = self._patch_visual_metrics(gray_pixels, color_pixels, x0, y0, x1, y1)
+                patch_score = (
+                    metrics["edge"] * 0.34
+                    + metrics["high_frequency"] * 0.34
+                    + metrics["color_variance"] * 0.22
+                    + metrics["block_boundary"] * 0.10
+                )
+                if best_patch is None or patch_score > best_patch["score"]:
+                    best_patch = {
+                        "score": patch_score,
+                        "x": (x0 + x1) / 2 / width,
+                        "y": (y0 + y1) / 2 / height,
+                        "metrics": metrics,
+                    }
+
+        if not best_patch:
+            return None
+
+        metrics = best_patch["metrics"]
+        labels = {
+            "edge": "경계 변화",
+            "high_frequency": "고주파 질감",
+            "color_variance": "색상 분산",
+            "block_boundary": "압축 블록 경계",
+        }
+        strongest = sorted(metrics.items(), key=lambda item: item[1], reverse=True)[:2]
+        reasons = ", ".join(f"{labels[key]} {int(value * 100)}%" for key, value in strongest)
+        x_percent = int(best_patch["x"] * 100)
+        y_percent = int(best_patch["y"] * 100)
+        size = int(20 + min(score, 1.0) * 30)
+        description = (
+            f"붉은 영역은 이미지 패치 분석에서 {reasons} 지표가 상대적으로 높게 측정된 위치입니다. "
+            "Sightengine API는 위치별 attention map을 제공하지 않으므로, 이 히트맵은 전체 AI 생성 확률을 보조 설명하기 위한 시각적 참고 자료입니다."
+        )
+        return x_percent, y_percent, size, description
+
+    def _patch_visual_metrics(self, gray_pixels, color_pixels, x0: int, y0: int, x1: int, y1: int) -> dict[str, float]:
+        edge_total = 0.0
+        high_total = 0.0
+        boundary_total = 0.0
+        internal_total = 0.0
+        sample_count = 0
+        boundary_count = 0
+        internal_count = 0
+        color_values: list[tuple[int, int, int]] = []
+        step = 2
+
+        for y in range(max(y0 + 1, 1), max(y0 + 2, y1 - 1), step):
+            for x in range(max(x0 + 1, 1), max(x0 + 2, x1 - 1), step):
+                center = gray_pixels[x, y]
+                left = gray_pixels[x - 1, y]
+                right = gray_pixels[x + 1, y]
+                up = gray_pixels[x, y - 1]
+                down = gray_pixels[x, y + 1]
+                dx = abs(center - left)
+                dy = abs(center - up)
+                edge_total += dx + dy
+                high_total += abs((4 * center) - left - right - up - down) / 4
+                sample_count += 1
+                if x % 8 == 0 or y % 8 == 0:
+                    boundary_total += dx + dy
+                    boundary_count += 1
+                else:
+                    internal_total += dx + dy
+                    internal_count += 1
+                if sample_count % 3 == 0:
+                    color_values.append(color_pixels[x, y])
+
+        if sample_count == 0:
+            return {"edge": 0.0, "high_frequency": 0.0, "color_variance": 0.0, "block_boundary": 0.0}
+
+        edge = min((edge_total / (sample_count * 2)) / 48, 1.0)
+        high_frequency = min((high_total / sample_count) / 42, 1.0)
+        color_variance = self._color_variance_score(color_values)
+        boundary_avg = boundary_total / max(boundary_count, 1)
+        internal_avg = internal_total / max(internal_count, 1)
+        block_boundary = min(max((boundary_avg / (internal_avg + 1.0)) - 1.0, 0.0) / 1.5, 1.0)
+        return {
+            "edge": edge,
+            "high_frequency": high_frequency,
+            "color_variance": color_variance,
+            "block_boundary": block_boundary,
+        }
+
+    def _color_variance_score(self, values: list[tuple[int, int, int]]) -> float:
+        if not values:
+            return 0.0
+        count = len(values)
+        means = [sum(pixel[channel] for pixel in values) / count for channel in range(3)]
+        variances = []
+        for channel, mean in enumerate(means):
+            variances.append(sum((pixel[channel] - mean) ** 2 for pixel in values) / count)
+        stddev = math.sqrt(sum(variances) / 3)
+        return min(stddev / 72, 1.0)
 
     def _build_result_text(self, score: float) -> tuple[str, str]:
         percent = int(score * 100)

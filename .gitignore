@@ -5,3 +5,4 @@ __pycache__/
 data/*.db
 static/uploads/*
 !static/uploads/.gitkeep
+*.zip

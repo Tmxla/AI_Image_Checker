@@ -27,7 +27,7 @@ def render_page(
     <header class="header">
       <a class="brand-block" href="{escape(home_link, quote=True)}">
         <h1>TrueLens</h1>
-        <p>GPU 기반 AI 생성 이미지 판별 시스템</p>
+        <p>AI 기반 이미지 진위 판별 보조 시스템</p>
       </a>
       {admin_link}
     </header>
@@ -114,7 +114,7 @@ def render_progress(result_id: str) -> str:
   <div class="center-card">
     <div class="spinner"></div>
     <h2>이미지를 분석하는 중입니다.</h2>
-    <p>GPU 기반 분석 엔진이 AI 생성 가능성과 히트맵 근거를 계산하고 있습니다.</p>
+    <p>AI 분석 엔진이 생성 가능성과 보조 시각 근거를 계산하고 있습니다.</p>
 
     <div class="status-card">
       <div>
@@ -178,7 +178,7 @@ def render_result(row, message: str = "", message_type: str = "info") -> str:
         </div>
 
         <div class="button-row left">
-          <a class="primary-btn" href="/heatmap?id={result_id}">히트맵 보기</a>
+          <a class="primary-btn" href="/heatmap?id={result_id}">시각 근거 보기</a>
           <a class="secondary-btn" href="/feedback?id={result_id}">오판별 피드백</a>
           <a class="ghost-btn" href="/">새 이미지 분석</a>
         </div>
@@ -199,13 +199,13 @@ def render_heatmap(row, message: str = "", message_type: str = "info") -> str:
     has_heatmap_signal = probability >= 0.20 and size > 0
     heatmap_class = "fake-image heatmap-img has-signal" if has_heatmap_signal else "fake-image heatmap-img clean"
     heatmap_overlay = '<div class="heatmap-layer" aria-hidden="true"></div>' if has_heatmap_signal else '<div class="clean-layer">검출된 의심 영역 없음</div>'
-    heatmap_label = "Heatmap Evidence" if has_heatmap_signal else "No Suspicious Region"
+    heatmap_label = "Visual Evidence" if has_heatmap_signal else "No Suspicious Region"
     body = f"""
 <section class="screen active">
   <div class="content-card">
     <div class="section-title">
-      <span class="badge">Heatmap Evidence</span>
-      <h2>시각적 근거 확인</h2>
+      <span class="badge">Visual Evidence</span>
+      <h2>보조 시각 근거 확인</h2>
     </div>
 
     <p class="notice">{escape(row["heatmap_description"])}</p>
@@ -218,7 +218,7 @@ def render_heatmap(row, message: str = "", message_type: str = "info") -> str:
         </div>
       </div>
       <div>
-        <h3>히트맵 이미지</h3>
+        <h3>보조 시각화</h3>
         <div class="{heatmap_class}" style="--heat-x: {x}%; --heat-y: {y}%; --heat-size: {size}%;">
           {real_image(row, heatmap_label)}
           {heatmap_overlay}
@@ -233,7 +233,7 @@ def render_heatmap(row, message: str = "", message_type: str = "info") -> str:
   </div>
 </section>
 """
-    return render_page("히트맵 근거", body, message, message_type)
+    return render_page("시각 근거", body, message, message_type)
 
 
 def render_feedback(row, message: str = "", message_type: str = "info") -> str:
