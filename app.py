@@ -305,9 +305,13 @@ def first(query: dict[str, list[str]], key: str) -> str:
     return values[0] if values else ""
 
 
-def run(host: str = "127.0.0.1", port: int = 8000) -> None:
+def run(host: str | None = None, port: int | None = None) -> None:
+    env_port = os.environ.get("PORT")
+    host = host or os.environ.get("HOST") or ("0.0.0.0" if env_port else "127.0.0.1")
+    port = port or int(env_port or "8000")
     server = ThreadingHTTPServer((host, port), TrueLensHandler)
-    print(f"TrueLens server running at http://{host}:{port}")
+    display_host = "localhost" if host == "0.0.0.0" else host
+    print(f"TrueLens server running at http://{display_host}:{port}")
     print("Press Ctrl+C to stop.")
     server.serve_forever()
 

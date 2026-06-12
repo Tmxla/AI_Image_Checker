@@ -4,10 +4,12 @@ AI Image Checker(TrueLens)는 이미지 파일 또는 이미지 URL을 입력받
 
 ## 실행 방법
 
-이 프로젝트는 외부 패키지 설치 없이 Python 표준 라이브러리만 사용합니다.
+실제 AI 이미지 판별은 Sightengine API를 사용합니다. Python 가상환경에서 의존성을 설치한 뒤 실행합니다.
 
 ```bash
-python3 app.py
+python3.11 -m venv .venv
+.venv/bin/python -m pip install -r requirements.txt
+SIGHTENGINE_API_USER=your-api-user SIGHTENGINE_API_SECRET=your-api-secret .venv/bin/python app.py
 ```
 
 실행 후 브라우저에서 아래 주소로 접속합니다.
@@ -28,7 +30,7 @@ http://127.0.0.1:8000
   - 10MB 이하 용량 제한
   - URL 형식 확인
 - AnalysisRequest 생성 및 상태 저장
-- DetectionEngine 기반 AI 생성 확률 계산
+- Sightengine AI Image Detection API 기반 AI 생성 확률 계산
 - 분석 결과 화면 제공
 - 원본 이미지와 히트맵 근거 비교 화면 제공
 - 오판별 피드백 제출
@@ -65,6 +67,29 @@ data/truelens.db    # 실행 중 생성되는 SQLite DB
 TRUELENS_ADMIN_PASSWORD=your-password python3 app.py
 ```
 
+## Render 배포 설정
+
+Render에서 Web Service를 만들 때 아래 값으로 설정합니다.
+
+```text
+Language: Python 3
+Branch: main
+Root Directory: 비워두기
+Build Command: pip install -r requirements.txt
+Start Command: python app.py
+```
+
+Environment Variables에는 아래 값을 등록합니다.
+
+```text
+SIGHTENGINE_API_USER=Sightengine에서 발급받은 API user
+SIGHTENGINE_API_SECRET=Sightengine에서 발급받은 API secret
+TRUELENS_ADMIN_PASSWORD=관리자 로그인 비밀번호
+TRUELENS_ADMIN_SECRET=긴 랜덤 문자열
+```
+
+`app.py`는 Render가 제공하는 `PORT` 환경변수를 읽고 `0.0.0.0`에 바인딩합니다.
+
 ## 설계 문서와의 연결
 
 Design 문서의 주요 클래스와 기능 흐름을 코드에 반영했습니다.
@@ -77,4 +102,10 @@ Design 문서의 주요 클래스와 기능 흐름을 코드에 반영했습니�
 
 ## 참고 사항
 
-현재 `DetectionEngine`은 실제 딥러닝 모델 대신 deterministic mock 분석 방식을 사용합니다. 이미지 바이트 또는 URL 문자열을 기반으로 항상 같은 입력에 대해 같은 AI 생성 확률과 히트맵 위치를 생성합니다. 실제 GPU 기반 AI 모델은 이후 `detection_engine.py`의 `DetectionEngine` 내부 구현만 교체하면 연결할 수 있도록 분리했습니다.
+현재 `DetectionEngine`은 기본적으로 Sightengine의 `genai` 모델을 사용합니다. API 응답의 `type.ai_generated` 값을 앱의 AI 생성 확률로 저장합니다.
+
+의도적으로 mock 모드를 쓰려면 다음처럼 실행합니다.
+
+```bash
+TRUELENS_FORCE_MOCK=1 .venv/bin/python app.py
+```

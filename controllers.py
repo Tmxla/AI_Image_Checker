@@ -1,4 +1,6 @@
 import re
+from urllib.error import URLError
+from urllib.request import Request, urlopen
 from pathlib import Path
 
 from detection_engine import DetectionEngine
@@ -6,6 +8,7 @@ from models import (
     AnalysisRequest,
     FeedbackReview,
     ImageURL,
+    MAX_IMAGE_SIZE,
     MisclassificationFeedback,
     UploadedImage,
     new_id,
@@ -78,7 +81,20 @@ class AnalysisController:
             elif isinstance(image_input, ImageURL):
                 image_url = image_input.url_address
                 source_name = image_input.url_address
+                source_bytes, content_type = self._download_url_image(image_input.url_address)
                 source_hint = image_input.url_address
+                validator = UploadedImage(
+                    input_id=image_input.input_id,
+                    input_type="downloaded_url",
+                    created_at=image_input.created_at,
+                    file_name=Path(image_input.url_address).name or "url_image.jpg",
+                    file_type=content_type,
+                    file_size=len(source_bytes),
+                    file_bytes=source_bytes,
+                )
+                valid, message = validator.validate_input()
+                if not valid:
+                    return False, message, None
             else:
                 return False, "알 수 없는 이미지 입력입니다.", None
 
@@ -86,6 +102,9 @@ class AnalysisController:
             output = self.detection_engine.run_detection(request, source_bytes, source_hint)
             self.storage.save_analysis_result(output.result, output.processing_time_ms)
             return True, "", output.result.result_id
+        except ValueError as exc:
+            self.storage.mark_request_failed(request.request_id, str(exc))
+            return False, str(exc), None
         except Exception as exc:
             self.storage.mark_request_failed(request.request_id, str(exc))
             return False, "분석 요청 처리 중 오류가 발생했습니다.", None
@@ -97,6 +116,21 @@ class AnalysisController:
         name = Path(file_name).name
         name = re.sub(r"[^A-Za-z0-9._-]+", "_", name)
         return name or "uploaded_image"
+
+    def _download_url_image(self, url: str) -> tuple[bytes, str]:
+        request = Request(url, headers={"User-Agent": "TrueLens/1.0"})
+        try:
+            with urlopen(request, timeout=8) as response:
+                content_type = (response.headers.get("Content-Type") or "").split(";")[0].strip()
+                content_length = response.headers.get("Content-Length")
+                if content_length and int(content_length) > MAX_IMAGE_SIZE:
+                    raise ValueError("이미지 파일 용량은 10MB 이하여야 합니다.")
+                data = response.read(MAX_IMAGE_SIZE + 1)
+        except (URLError, TimeoutError) as exc:
+            raise ValueError("해당 URL에서 이미지를 불러올 수 없습니다.") from exc
+        if len(data) > MAX_IMAGE_SIZE:
+            raise ValueError("이미지 파일 용량은 10MB 이하여야 합니다.")
+        return data, content_type
 
 
 class FeedbackController:
