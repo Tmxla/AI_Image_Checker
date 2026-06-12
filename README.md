@@ -72,6 +72,7 @@ TRUELENS_ADMIN_PASSWORD=your-password python3 app.py
 ```
 
 ## Render 배포 설정
+현재 웹 사이트 주소:https://ai-image-server-7qdg.onrender.com
 
 Render에서 Web Service를 만들 때 아래 값으로 설정합니다.
 
