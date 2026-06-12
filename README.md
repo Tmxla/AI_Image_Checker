@@ -63,6 +63,7 @@ data/truelens.db    # 실행 중 생성되는 SQLite DB
 ## 관리자 로그인
 
 관리자 화면은 비밀번호 인증 후 접근할 수 있습니다. 기본 개발용 비밀번호는 `admin1234`입니다.
+제출용 Render 배포 환경에서는 관리자 비밀번호를 `passwd`로 설정했습니다.
 
 비밀번호를 바꾸고 실행하려면 다음처럼 환경변수를 지정합니다.
 
@@ -88,7 +89,7 @@ Environment Variables에는 아래 값을 등록합니다.
 SIGHTENGINE_API_USER=Sightengine에서 발급받은 API user
 SIGHTENGINE_API_SECRET=Sightengine에서 발급받은 API secret
 TRUELENS_DETECTOR_BACKEND=hybrid
-TRUELENS_ADMIN_PASSWORD=관리자 로그인 비밀번호
+TRUELENS_ADMIN_PASSWORD=passwd
 TRUELENS_ADMIN_SECRET=긴 랜덤 문자열
 ```
 
