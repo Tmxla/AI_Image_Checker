@@ -192,9 +192,14 @@ def render_result(row, message: str = "", message_type: str = "info") -> str:
 
 def render_heatmap(row, message: str = "", message_type: str = "info") -> str:
     result_id = escape(row["result_id"])
+    probability = float(row["ai_probability"])
     x = int(row["heatmap_x"])
     y = int(row["heatmap_y"])
     size = int(row["heatmap_size"])
+    has_heatmap_signal = probability >= 0.20 and size > 0
+    heatmap_class = "fake-image heatmap-img has-signal" if has_heatmap_signal else "fake-image heatmap-img clean"
+    heatmap_overlay = '<div class="heatmap-layer" aria-hidden="true"></div>' if has_heatmap_signal else '<div class="clean-layer">검출된 의심 영역 없음</div>'
+    heatmap_label = "Heatmap Evidence" if has_heatmap_signal else "No Suspicious Region"
     body = f"""
 <section class="screen active">
   <div class="content-card">
@@ -214,9 +219,9 @@ def render_heatmap(row, message: str = "", message_type: str = "info") -> str:
       </div>
       <div>
         <h3>히트맵 이미지</h3>
-        <div class="fake-image heatmap-img" style="--heat-x: {x}%; --heat-y: {y}%; --heat-size: {size}%;">
-          {real_image(row, "Heatmap Evidence")}
-          <div class="heatmap-layer" aria-hidden="true"></div>
+        <div class="{heatmap_class}" style="--heat-x: {x}%; --heat-y: {y}%; --heat-size: {size}%;">
+          {real_image(row, heatmap_label)}
+          {heatmap_overlay}
         </div>
       </div>
     </div>

@@ -36,7 +36,7 @@ class DetectionEngine:
     def run_detection(self, request: AnalysisRequest, source_bytes: Optional[bytes], source_hint: str) -> DetectionOutput:
         request.update_status("analyzing")
         score, model_version = self.calculate_ai_score(source_bytes, source_hint)
-        heatmap = self.generate_heatmap_data(source_bytes, source_hint)
+        heatmap = self.generate_heatmap_data(source_bytes, source_hint, score)
         label, summary = self._build_result_text(score)
         result = AnalysisResult(
             result_id=new_id("result"),
@@ -144,17 +144,29 @@ class DetectionEngine:
             return "png"
         return "jpg"
 
-    def generate_heatmap_data(self, source_bytes: Optional[bytes], source_hint: str) -> HeatmapEvidence:
+    def generate_heatmap_data(self, source_bytes: Optional[bytes], source_hint: str, score: float) -> HeatmapEvidence:
         digest = hashlib.sha256((source_bytes or source_hint.encode("utf-8")).strip()).digest()
+        if score < 0.20:
+            return HeatmapEvidence(
+                heatmap_id=new_id("heatmap"),
+                heatmap_x=50,
+                heatmap_y=50,
+                heatmap_size=0,
+                description="AI 생성 가능성이 낮게 측정되어 붉은 의심 영역을 표시하지 않습니다. 현재 히트맵은 판별 점수와 일관되도록 비활성화되었습니다.",
+            )
         x = 24 + digest[0] % 52
         y = 22 + digest[1] % 54
-        size = 34 + digest[2] % 24
+        size = int(18 + min(score, 1.0) * 34)
+        if score < 0.45:
+            description = "AI 생성 가능성이 낮은 편이지만 일부 약한 시각적 신호가 있어 작은 참고 영역만 표시합니다."
+        else:
+            description = "붉게 표시된 영역은 전체 AI 생성 가능성 점수와 함께 참고할 수 있는 상대적 의심 영역입니다."
         return HeatmapEvidence(
             heatmap_id=new_id("heatmap"),
             heatmap_x=x,
             heatmap_y=y,
             heatmap_size=size,
-            description="붉게 표시된 영역은 색상 변화, 경계 패턴, 압축 흔적을 기준으로 AI 생성 가능성이 상대적으로 높게 계산된 영역입니다.",
+            description=description,
         )
 
     def _build_result_text(self, score: float) -> tuple[str, str]:
