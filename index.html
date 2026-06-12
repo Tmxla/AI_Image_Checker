@@ -1,0 +1,304 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>TrueLens | AI Image Checker</title>
+  <link rel="stylesheet" href="style.css" />
+</head>
+<body>
+  <div class="app">
+
+    <!-- Header -->
+    <header class="header">
+      <div>
+        <h1>TrueLens</h1>
+        <p>GPU 기반 AI 생성 이미지 판별 시스템</p>
+      </div>
+      <button class="admin-link" onclick="showScreen('admin')">Administrator</button>
+    </header>
+
+    <!-- 1. Main Upload Interface -->
+    <section id="upload" class="screen active">
+      <div class="hero-card">
+        <span class="badge">AI Image Checker</span>
+        <h2>AI 생성 이미지 여부를 확인해보세요.</h2>
+        <p>
+          이미지 파일을 업로드하거나 이미지 URL을 입력하면 TrueLens가 AI 생성 가능성을 분석합니다.
+        </p>
+
+        <div class="upload-grid">
+          <div class="upload-box">
+            <div class="upload-icon">⬆</div>
+            <h3>이미지 파일 업로드</h3>
+            <p>JPG 또는 PNG 파일을 드래그 앤 드롭하거나 선택하세요.</p>
+            <label class="file-label">
+              파일 선택
+              <input type="file" id="fileInput" accept="image/png, image/jpeg" />
+            </label>
+            <p id="fileName" class="file-name">선택된 파일 없음</p>
+          </div>
+
+          <div class="url-box">
+            <h3>이미지 URL 입력</h3>
+            <p>웹상 이미지 주소를 입력하여 분석할 수 있습니다.</p>
+            <input type="text" id="urlInput" placeholder="https://example.com/image.jpg" />
+            <p class="hint">파일 업로드 또는 URL 입력 중 하나만 사용하세요.</p>
+          </div>
+        </div>
+
+        <div class="button-row">
+          <button class="primary-btn" onclick="startAnalysis()">분석</button>
+          <button class="secondary-btn" onclick="resetInput()">초기화</button>
+        </div>
+      </div>
+    </section>
+
+    <!-- 2. Analysis Progress Interface -->
+    <section id="progress" class="screen">
+      <div class="center-card">
+        <div class="spinner"></div>
+        <h2>이미지를 분석하는 중입니다.</h2>
+        <p>GPU 기반 분석 엔진이 AI 생성 가능성과 히트맵 근거를 계산하고 있습니다.</p>
+
+        <div class="status-card">
+          <div>
+            <span>요청 상태</span>
+            <strong>분석 중</strong>
+          </div>
+          <div>
+            <span>예상 처리 시간</span>
+            <strong>약 5초</strong>
+          </div>
+        </div>
+
+        <button class="primary-btn" onclick="showScreen('result')">결과 화면으로 이동</button>
+      </div>
+    </section>
+
+    <!-- 3. Result Detail Interface -->
+    <section id="result" class="screen">
+      <div class="content-card">
+        <div class="section-title">
+          <span class="badge danger">Result</span>
+          <h2>분석 결과 상세</h2>
+        </div>
+
+        <div class="result-layout">
+          <div class="image-preview">
+            <div class="fake-image">
+              <span>Sample Image</span>
+            </div>
+          </div>
+
+          <div class="result-panel">
+            <p class="label">AI 생성 확률</p>
+            <div class="score">87%</div>
+            <h3>AI 생성 가능성이 높습니다.</h3>
+            <p>
+              이미지의 질감, 조명, 세부 패턴을 기반으로 분석한 결과 AI 생성 또는 조작 가능성이 높게 탐지되었습니다.
+            </p>
+
+            <div class="summary-box">
+              <div>
+                <span>판별 결과</span>
+                <strong>AI Generated</strong>
+              </div>
+              <div>
+                <span>분석 시간</span>
+                <strong>3.2초</strong>
+              </div>
+              <div>
+                <span>모델 버전</span>
+                <strong>TrueLens-v1</strong>
+              </div>
+            </div>
+
+            <div class="button-row left">
+              <button class="primary-btn" onclick="showScreen('heatmap')">히트맵 보기</button>
+              <button class="secondary-btn" onclick="showScreen('feedback')">오판별 피드백</button>
+              <button class="ghost-btn" onclick="showScreen('upload')">새 이미지 분석</button>
+            </div>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- 4. Heatmap Evidence Interface -->
+    <section id="heatmap" class="screen">
+      <div class="content-card">
+        <div class="section-title">
+          <span class="badge">Heatmap Evidence</span>
+          <h2>시각적 근거 확인</h2>
+        </div>
+
+        <p class="notice">
+          붉게 표시된 영역은 AI 생성 또는 조작 가능성이 상대적으로 높게 탐지된 영역입니다.
+        </p>
+
+        <div class="heatmap-grid">
+          <div>
+            <h3>원본 이미지</h3>
+            <div class="fake-image original">
+              <span>Original Image</span>
+            </div>
+          </div>
+          <div>
+            <h3>히트맵 이미지</h3>
+            <div class="fake-image heatmap-img">
+              <span>Heatmap Evidence</span>
+            </div>
+          </div>
+        </div>
+
+        <div class="button-row">
+          <button class="primary-btn" onclick="showScreen('result')">결과 화면으로 돌아가기</button>
+          <button class="secondary-btn" onclick="showScreen('feedback')">오판별 피드백</button>
+        </div>
+      </div>
+    </section>
+
+    <!-- 5. Misclassification Feedback Interface -->
+    <section id="feedback" class="screen">
+      <div class="content-card narrow">
+        <div class="section-title">
+          <span class="badge">Feedback</span>
+          <h2>오판별 피드백 제출</h2>
+        </div>
+
+        <div class="mini-result">
+          <p>현재 시스템 판별 결과</p>
+          <strong>AI 생성 가능성이 높습니다. · 87%</strong>
+        </div>
+
+        <label class="form-label">피드백 유형</label>
+        <div class="radio-group">
+          <label><input type="radio" name="feedbackType" /> 실제 사진입니다</label>
+          <label><input type="radio" name="feedbackType" /> AI 생성 이미지입니다</label>
+          <label><input type="radio" name="feedbackType" /> 판별 결과가 애매합니다</label>
+        </div>
+
+        <label class="form-label">추가 의견</label>
+        <textarea id="feedbackText" placeholder="판별 결과에 대한 의견을 입력해 주세요."></textarea>
+
+        <div id="feedbackMessage" class="success-message hidden">
+          피드백이 접수되었습니다.
+        </div>
+
+        <div class="button-row">
+          <button class="primary-btn" onclick="submitFeedback()">전송</button>
+          <button class="ghost-btn" onclick="showScreen('result')">취소</button>
+        </div>
+      </div>
+    </section>
+
+    <!-- 6. Administrator Dashboard -->
+    <section id="admin" class="screen">
+      <div class="content-card">
+        <div class="section-title">
+          <span class="badge">Administrator</span>
+          <h2>관리자 대시보드</h2>
+        </div>
+
+        <h3>시스템 상태 관리</h3>
+        <div class="dashboard-grid">
+          <div class="metric-card">
+            <span>일일 분석 요청 수</span>
+            <strong>248</strong>
+          </div>
+          <div class="metric-card">
+            <span>평균 분석 처리 시간</span>
+            <strong>3.4초</strong>
+          </div>
+          <div class="metric-card">
+            <span>분석 성공 건수</span>
+            <strong>231</strong>
+          </div>
+          <div class="metric-card">
+            <span>분석 실패 건수</span>
+            <strong>17</strong>
+          </div>
+          <div class="metric-card">
+            <span>현재 처리 중인 요청 수</span>
+            <strong>6</strong>
+          </div>
+          <div class="metric-card success">
+            <span>시스템 상태</span>
+            <strong>정상</strong>
+          </div>
+        </div>
+
+        <h3 class="mt">피드백 관리</h3>
+        <div class="feedback-list">
+          <div class="feedback-item" onclick="showScreen('review')">
+            <div class="thumb"></div>
+            <div>
+              <strong>AI 생성 가능성이 높습니다.</strong>
+              <p>사용자 피드백: 실제 사진입니다</p>
+            </div>
+            <span>2026-06-05 14:32</span>
+            <em>검토 대기</em>
+          </div>
+
+          <div class="feedback-item" onclick="showScreen('review')">
+            <div class="thumb"></div>
+            <div>
+              <strong>AI 생성 가능성이 낮습니다.</strong>
+              <p>사용자 피드백: AI 생성 이미지입니다</p>
+            </div>
+            <span>2026-06-05 13:48</span>
+            <em>검토 대기</em>
+          </div>
+        </div>
+
+        <button class="ghost-btn mt" onclick="showScreen('upload')">메인 화면으로</button>
+      </div>
+    </section>
+
+    <!-- 7. Feedback Review Detail Interface -->
+    <section id="review" class="screen">
+      <div class="content-card">
+        <div class="section-title">
+          <span class="badge">Review</span>
+          <h2>피드백 상세 검토</h2>
+        </div>
+
+        <div class="review-layout">
+          <div class="fake-image review-img">
+            <span>Original Image</span>
+          </div>
+
+          <div class="review-panel">
+            <h3>시스템 판별 결과</h3>
+            <p><strong>AI 생성 확률:</strong> 87%</p>
+            <p><strong>판별 문구:</strong> AI 생성 가능성이 높습니다.</p>
+
+            <h3>사용자 피드백</h3>
+            <p><strong>피드백 유형:</strong> 실제 사진입니다</p>
+            <p><strong>추가 의견:</strong> 직접 촬영한 사진인데 AI 이미지로 판별되었습니다.</p>
+
+            <label class="form-label">검토 결과 선택</label>
+            <select id="reviewSelect">
+              <option>모델 개선 후보</option>
+              <option>단순 참고</option>
+              <option>검토 제외</option>
+            </select>
+
+            <div id="reviewMessage" class="success-message hidden">
+              피드백 검토 결과가 저장되었습니다.
+            </div>
+
+            <div class="button-row left">
+              <button class="primary-btn" onclick="saveReview()">저장</button>
+              <button class="ghost-btn" onclick="showScreen('admin')">목록으로 돌아가기</button>
+            </div>
+          </div>
+        </div>
+      </div>
+    </section>
+
+  </div>
+
+  <script src="script.js"></script>
+</body>
+</html>

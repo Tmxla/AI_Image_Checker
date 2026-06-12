@@ -4,6 +4,8 @@
 ### GPU-based AI Image Verification Assistant
 ### GPU 기반 AI 생성 이미지 판별 시스템
 
+> 최종 구현 반영 메모: 초기 기획에서는 GPU 기반 자체 분석 엔진을 중심으로 시스템을 구상하였다. 최종 웹 배포 구현에서는 과제 제출 기간 동안 안정적으로 접속 가능한 서비스를 제공하기 위해 Render 웹 서버와 Sightengine AI Image Detection API를 연동하였다. 또한 위치별 모델 attention map은 API에서 제공하지 않으므로, 시각 근거 화면은 업로드 이미지의 패치별 경계 변화, 고주파 질감, 색상 분산, 압축 블록 경계 지표를 계산한 보조 시각화로 구현하였다.
+
 **Student No, Name, E-mail**
 - Student No: 22313526
 - Name: 장지웅
